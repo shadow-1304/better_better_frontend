@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, Lightbulb, MessageSquare, Settings, HelpCircle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import AnimatedAvatar from './AnimatedAvatar';
@@ -22,6 +22,9 @@ const ChatArea: React.FC = () => {
   const { theme } = useTheme();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingTime, setThinkingTime] = useState(6);
+  const [thinkingCounter, setThinkingCounter] = useState(0);
 
   const suggestionCards: SuggestionCard[] = [
     {
@@ -62,7 +65,32 @@ const ChatArea: React.FC = () => {
   const textColor = theme === 'dark' ? 'text-gray-300' : 'text-gray-700';
   const placeholderColor = theme === 'dark' ? 'placeholder-gray-500' : 'placeholder-gray-400';
 
-  const handleSendMessage = (messageText?: string) => {
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isThinking) {
+      setThinkingCounter(thinkingTime);
+      timer = setInterval(() => {
+        setThinkingCounter((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setIsThinking(false);
+            const aiResponse: Message = {
+              id: messages.length + 2,
+              text: "After careful consideration, here's my response: I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
+              sender: 'ai',
+              timestamp: new Date()
+            };
+            setMessages((prev) => [...prev, aiResponse]);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isThinking, thinkingTime, messages]);
+
+  const handleSendMessage = (messageText?: string, useThinkMode: boolean = false) => {
     const textToSend = messageText || message;
     if (textToSend.trim()) {
       const newMessage: Message = {
@@ -75,16 +103,19 @@ const ChatArea: React.FC = () => {
       setMessages([...messages, newMessage]);
       setMessage('');
       
-      // Simulate AI response
-      setTimeout(() => {
-        const aiResponse: Message = {
-          id: messages.length + 2,
-          text: "Thank you for your message! I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
-          sender: 'ai',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiResponse]);
-      }, 1000);
+      if (useThinkMode) {
+        setIsThinking(true);
+      } else {
+        setTimeout(() => {
+          const aiResponse: Message = {
+            id: messages.length + 2,
+            text: "Thank you for your message! I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
+            sender: 'ai',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, aiResponse]);
+        }, 1000);
+      }
     }
   };
 
@@ -105,7 +136,6 @@ const ChatArea: React.FC = () => {
 
   return (
     <div className={`flex-1 ${chatBg} transition-theme flex flex-col relative overflow-hidden`}>
-      {/* WhatsApp-style background pattern */}
       <div className="absolute inset-0 opacity-5 pointer-events-none">
         <div className="whatsapp-pattern"></div>
       </div>
@@ -124,7 +154,6 @@ const ChatArea: React.FC = () => {
             </p>
           </div>
 
-          {/* Suggestion Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl w-full">
             {suggestionCards.map((suggestion) => (
               <div
@@ -214,6 +243,65 @@ const ChatArea: React.FC = () => {
                 </div>
               </div>
             ))}
+            
+            {isThinking && (
+              <div className="flex justify-start">
+                <div className="max-w-3xl flex items-start space-x-3">
+                  <div className={`
+                    w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                    ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}
+                  `}>
+                    <Bot size={20} className={theme === 'dark' ? 'text-teal-400' : 'text-teal-600'} />
+                  </div>
+                  
+                  <div className={`
+                    message-card ${theme}
+                    ${aiCardBg}
+                    ${textColor}
+                    relative overflow-hidden
+                  `}>
+                    {/* Grok-style continuous line animation */}
+                    <div className="absolute top-0 left-0 w-full h-1.5">
+                      <div className={`
+                        absolute h-full w-[200%] animate-streamline
+                        ${theme === 'dark' ? 'bg-teal-400' : 'bg-teal-600'}
+                      `} style={{
+                        backgroundImage: theme === 'dark' 
+                          ? 'linear-gradient(90deg, transparent 0%, rgba(45,212,191,0.8) 50%, transparent 100%)'
+                          : 'linear-gradient(90deg, transparent 0%, rgba(13,148,136,0.8) 50%, transparent 100%)'
+                      }}></div>
+                    </div>
+                    
+                    <div className="pt-4 pb-2">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <p className="text-sm font-semibold">Processing your request...</p>
+                      </div>
+                      
+                      <div className="flex space-x-1 mt-3">
+                        {[...Array(12)].map((_, i) => (
+                          <div 
+                            key={i}
+                            className={`
+                              h-2 flex-1 rounded-full
+                              ${theme === 'dark' ? 'bg-gray-600' : 'bg-gray-300'}
+                              animate-pulse
+                            `}
+                            style={{
+                              animationDelay: `${i * 0.1}s`,
+                              opacity: 0.3 + (i % 3) * 0.2
+                            }}
+                          ></div>
+                        ))}
+                      </div>
+                      
+                      <p className="text-sm leading-relaxed mt-3 italic">
+                        Analyzing: "{messages[messages.length - 1].text}"
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -237,6 +325,22 @@ const ChatArea: React.FC = () => {
               `}
             />
           </div>
+          
+          <button
+            onClick={() => handleSendMessage(undefined, true)}
+            disabled={!message.trim()}
+            className={`
+              p-3 rounded-full transition-all duration-200
+              ${theme === 'dark' 
+                ? 'text-teal-400 hover:bg-teal-400 hover:bg-opacity-10' 
+                : 'text-teal-600 hover:bg-teal-600 hover:bg-opacity-10'
+              }
+              ${!message.trim() ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+            title="Think"
+          >
+            <Lightbulb size={20} />
+          </button>
           
           <button
             onClick={() => handleSendMessage()}
