@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "title": "Paper Manufacturing",
+    "description": "Learn about modern papermaking processes",
+    "icon": "Settings",
+    "prompt": "Tell me about modern paper manufacturing processes and technologies"
+  },
+  {
+    "id": 2,
+    "title": "Production Optimization",
+    "description": "Optimize your production line efficiency",
+    "icon": "Lightbulb",
+    "prompt": "How can I optimize my paper production line for better efficiency?"
+  },
+  {
+    "id": 3,
+    "title": "Quality Control",
+    "description": "Improve paper quality standards",
+    "icon": "MessageSquare",
+    "prompt": "What are the best practices for paper quality control and testing?"
+  },
+  {
+    "id": 4,
+    "title": "Troubleshooting",
+    "description": "Get help with common issues",
+    "icon": "HelpCircle",
+    "prompt": "Help me troubleshoot common papermaking machine problems"
+  },
+  {
+    "id": 5,
+    "title": "idle",
+    "description": "Dont help just chill",
+    "icon": "HelpCircle",
+    "prompt": "no prompts just chill"
+  }
+]
+
