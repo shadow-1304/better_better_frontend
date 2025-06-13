@@ -1,7 +1,51 @@
-import React, { useState } from 'react';
-import { Send, Bot, User, Lightbulb, MessageSquare, Settings, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Bot, User, Lightbulb, MessageSquare, Settings, HelpCircle, Mic } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import AnimatedAvatar from './AnimatedAvatar';
+
+// Type definitions for Web Speech API
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
+  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognitionResultList {
+  [index: number]: SpeechRecognitionResult;
+  length: number;
+}
+
+interface SpeechRecognitionResult {
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal: boolean;
+  length: number;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
 
 interface Message {
   id: number;
@@ -22,6 +66,12 @@ const ChatArea: React.FC = () => {
   const { theme } = useTheme();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isListening, setIsListening] = useState(false);
+  const [transcription, setTranscription] = useState('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
 
   const suggestionCards: SuggestionCard[] = [
     {
@@ -62,6 +112,125 @@ const ChatArea: React.FC = () => {
   const textColor = theme === 'dark' ? 'text-gray-300' : 'text-gray-700';
   const placeholderColor = theme === 'dark' ? 'placeholder-gray-500' : 'placeholder-gray-400';
 
+  // WebSocket connection setup
+  useEffect(() => {
+    const connectWebSocket = () => {
+      wsRef.current = new WebSocket('ws://localhost:8080');
+
+      wsRef.current.onopen = () => {
+        console.log('WebSocket connected');
+        reconnectAttempts.current = 0; // Reset reconnect attempts on successful connection
+      };
+
+      wsRef.current.onmessage = (event) => {
+        console.log('Received WebSocket message:', event.data);
+        try {
+          const data = JSON.parse(event.data);
+          if (data.text) {
+            const aiResponse: Message = {
+              id: messages.length + 1,
+              text: data.text,
+              sender: 'ai',
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, aiResponse]);
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      wsRef.current.onclose = () => {
+        console.log('WebSocket disconnected');
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current += 1;
+          setTimeout(connectWebSocket, 3000 * reconnectAttempts.current); // Exponential backoff
+        } else {
+          console.error('Max WebSocket reconnect attempts reached');
+          setMessages(prev => [...prev, {
+            id: messages.length + 1,
+            text: 'Connection to server lost. Please try again later.',
+            sender: 'ai',
+            timestamp: new Date()
+          }]);
+        }
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      wsRef.current?.close();
+    };
+  }, []); // Removed messages.length dependency
+
+  // Speech recognition setup
+  useEffect(() => {
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        console.log('Transcription:', { finalTranscript, interimTranscript });
+        setTranscription(finalTranscript + interimTranscript);
+        setMessage(finalTranscript + interimTranscript);
+      };
+
+      recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        setTranscription('Error occurred during speech recognition.');
+      };
+
+      recognitionRef.current.onend = () => {
+        if (isListening) {
+          recognitionRef.current?.start();
+        }
+      };
+    } else {
+      console.warn('Speech recognition not supported in this browser.');
+      setTranscription('Speech recognition is not supported in this browser.');
+    }
+
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, [isListening]);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      setTranscription('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      setTranscription('');
+      setMessage('');
+      recognitionRef.current?.start();
+      setIsListening(true);
+    }
+  };
+
   const handleSendMessage = (messageText?: string) => {
     const textToSend = messageText || message;
     if (textToSend.trim()) {
@@ -74,17 +243,19 @@ const ChatArea: React.FC = () => {
       
       setMessages([...messages, newMessage]);
       setMessage('');
-      
-      // Simulate AI response
-      setTimeout(() => {
-        const aiResponse: Message = {
+      setTranscription('');
+
+      // Send message to WebSocket server
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ text: textToSend }));
+      } else {
+        setMessages(prev => [...prev, {
           id: messages.length + 2,
-          text: "Thank you for your message! I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
+          text: 'Failed to send message. Server is disconnected.',
           sender: 'ai',
           timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiResponse]);
-      }, 1000);
+        }]);
+      }
     }
   };
 
@@ -112,7 +283,7 @@ const ChatArea: React.FC = () => {
 
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
-          <AnimatedAvatar />
+          <AnimatedAvatar toggleListening={toggleListening} isListening={isListening} />
           
           <div className={`welcome-message ${theme} mb-8`}>
             <h2 className="text-2xl font-semibold mb-2">
@@ -172,7 +343,7 @@ const ChatArea: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-6 relative z-10">
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex justify-center mb-8">
-              <AnimatedAvatar />
+              <AnimatedAvatar toggleListening={toggleListening} isListening={isListening} />
             </div>
             
             {messages.map((msg) => (
@@ -222,7 +393,32 @@ const ChatArea: React.FC = () => {
         p-6 border-t transition-theme relative z-10
         ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}
       `}>
+        {transcription && (
+          <div className={`
+            max-w-4xl mx-auto mb-4 p-3 rounded-lg text-sm
+            ${theme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}
+          `}>
+            {transcription}
+          </div>
+        )}
         <div className="max-w-4xl mx-auto flex items-center space-x-4">
+          <button
+            onClick={toggleListening}
+            className={`
+              mic-button ${theme}
+              p-4 rounded-full transition-all duration-200 cursor-pointer shadow-lg
+              ${theme === 'dark' 
+                ? 'bg-gradient-to-r from-teal-400 to-cyan-400 text-black' 
+                : 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white'
+              }
+              hover:scale-115
+              hover:shadow-[0_0_30px_rgba(0,229,255,0.6)]
+              ${isListening ? 'animate-pulse' : ''}
+            `}
+          >
+            <Mic size={20} />
+          </button>
+          
           <div className="flex-1 relative">
             <input
               type="text"

@@ -2,7 +2,12 @@ import React, { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { useTheme } from '../context/ThemeContext';
 
-const AnimatedAvatar: React.FC = () => {
+interface AnimatedAvatarProps {
+  toggleListening: () => void;
+  isListening: boolean;
+}
+
+const AnimatedAvatar: React.FC<AnimatedAvatarProps> = ({ toggleListening, isListening }) => {
   const avatarRef = useRef<SVGSVGElement>(null);
   const { theme } = useTheme();
 
@@ -145,7 +150,8 @@ const AnimatedAvatar: React.FC = () => {
           width="140"
           height="140"
           viewBox="0 0 140 140"
-          className="drop-shadow-2xl"
+          className={`drop-shadow-2xl cursor-pointer ${isListening ? 'animate-pulse' : ''}`}
+          onClick={toggleListening}
         >
           <defs>
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
