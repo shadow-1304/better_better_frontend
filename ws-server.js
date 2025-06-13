@@ -1,37 +1,81 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
+import { v4 as uuidv4 } from 'uuid'; // For generating session_id
 
-// Mock AI responses based on user input
-const mockAIResponses = {
-  "hello": "Hi there! How can I assist you with paper manufacturing today?",
-  "paper manufacturing": "Modern paper manufacturing involves processes like pulping, refining, and pressing. Want details on any specific step?",
-  "production optimization": "To optimize your paper production line, focus on automation, real-time monitoring, and reducing waste. Need specific tips?",
-  "quality control": "Best practices for paper quality control include regular testing for tensile strength, thickness, and moisture content. Want more details?",
-  "troubleshooting": "Common papermaking issues include paper jams, uneven coating, or machine downtime. Describe your issue for specific advice!"
-};
-
+// Create WebSocket server for frontend clients
 const wss = new WebSocketServer({ port: 8080 });
 
-wss.on('connection', (ws) => {
-  console.log('Client connected');
+// Function to connect to Python backend WebSocket
+const connectToBackend = (frontendWs, sessionId) => {
+  const backendWs = new WebSocket(`ws://localhost:3045/hr/${sessionId}`);
 
-  ws.on('message', (data) => {
+  backendWs.on('open', () => {
+    console.log(`Connected to Python backend at ws://localhost:3045/hr/${sessionId}`);
+  });
+
+  backendWs.on('message', (data) => {
     try {
-      const message = JSON.parse(data.toString());
-      console.log('Received:', message.text);
-      
-      // Generate AI response based on user input
-      const userMessage = message.text.toLowerCase();
-      let aiResponse = mockAIResponses[userMessage] || "I'm not sure about that, but I can help with paper manufacturing queries! Try asking about production or quality control.";
-      
-      ws.send(JSON.stringify({ text: aiResponse }));
+      const backendResponse = JSON.parse(data.toString());
+      console.log('Received from backend:', backendResponse);
+      // Forward backend response to frontend client
+      if (backendResponse.text) {
+        frontendWs.send(JSON.stringify({ text: backendResponse.text }));
+      }
     } catch (error) {
-      console.error('Error parsing message:', error);
-      ws.send(JSON.stringify({ text: "Error processing your message. Please try again." }));
+      console.error('Error parsing backend message:', error);
+      frontendWs.send(JSON.stringify({ text: 'Error receiving response from backend.' }));
     }
   });
 
-  ws.on('close', () => {
-    console.log('Client disconnected');
+  backendWs.on('error', (error) => {
+    console.error('Backend WebSocket error:', error);
+    frontendWs.send(JSON.stringify({ text: `Error connecting to backend: ${error.message}` }));
+  });
+
+  backendWs.on('close', (code, reason) => {
+    console.log(`Disconnected from Python backend. Code: ${code}, Reason: ${reason.toString()}`);
+    // Attempt to reconnect after 3 seconds
+    setTimeout(() => connectToBackend(frontendWs, sessionId), 3000);
+  });
+
+  return backendWs;
+};
+
+wss.on('connection', (frontendWs) => {
+  console.log('Frontend client connected');
+
+  // Generate a unique session_id for this connection
+  const sessionId = uuidv4();
+  console.log(`Generated session_id: ${sessionId}`);
+
+  // Connect to Python backend with session_id
+  const backendWs = connectToBackend(frontendWs, sessionId);
+
+  frontendWs.on('message', (data) => {
+    try {
+      const message = JSON.parse(data.toString());
+      console.log('Received from frontend:', message.text);
+      
+      // Forward message to Python backend
+      if (message.text && backendWs.readyState === WebSocket.OPEN) {
+        backendWs.send(JSON.stringify({ text: message.text }));
+      } else {
+        console.error('Backend WebSocket not open');
+        frontendWs.send(JSON.stringify({ text: 'Failed to send message. Backend is disconnected.' }));
+      }
+    } catch (error) {
+      console.error('Error parsing frontend message:', error);
+      frontendWs.send(JSON.stringify({ text: 'Error processing your message. Please try again.' }));
+    }
+  });
+
+  frontendWs.on('close', () => {
+    console.log('Frontend client disconnected');
+    // Close backend connection when frontend disconnects
+    backendWs.close();
+  });
+
+  frontendWs.on('error', (error) => {
+    console.error('Frontend WebSocket error:', error);
   });
 });
 
