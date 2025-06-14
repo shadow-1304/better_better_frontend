@@ -206,8 +206,9 @@ const ChatArea: React.FC = () => {
           }
 
           // Handle get_hr_reminder data response
-          if (data.get_hr_reminder && Array.isArray(data.data) && !isReminderProcessedRef.current) {
+          if (data.get_hr_reminder && Array.isArray(data.data)) {
             reminderDataRef.current = data.data; // Store data for SideCanvas
+            isReminderProcessedRef.current = false; // Reset to allow text response processing
             return; // Wait for text response
           }
 
@@ -500,8 +501,8 @@ const ChatArea: React.FC = () => {
           elements.push(
             <p key={`p-${index}`} className="font-semibold mt-2">{line}</p>
           );
-        } else if (line.startsWith('•') || line.startsWith('-')) {
-          currentList.push(line.replace(/^\s*[\•\-]\s*/, ''));
+        } else if (line.startsWith('â€¢') || line.startsWith('-')) {
+          currentList.push(line.replace(/^\s*[\â€¢\-]\s*/, ''));
         } else {
           if (currentList.length) {
             elements.push(
