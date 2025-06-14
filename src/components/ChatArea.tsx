@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Lightbulb, MessageSquare, Settings, HelpCircle, Mic } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import AnimatedAvatar from './AnimatedAvatar';
+import SideCanvas from './SideCanvas';
 import * as LucideIcons from 'lucide-react';
 import rawSuggestionsData from '../data/suggestion.json';
 
@@ -49,18 +50,28 @@ declare global {
   }
 }
 
+// CanvasData interface for SideCanvas
+interface CanvasData {
+  type: 'table' | 'chart' | 'code' | 'diagram' | 'text';
+  title?: string;
+  content: any;
+  metadata?: {
+    language?: string;
+    rows?: number;
+    columns?: number;
+    chartType?: string;
+  };
+}
+
+// Message interface with tool response support
 interface Message {
   id: number;
   text: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  isToolResponse?: boolean;
+  toolData?: CanvasData;
 }
-const iconMap = {
-  Settings,
-  Lightbulb,
-  MessageSquare,
-  HelpCircle,
-} as const;
 
 interface SuggestionCard {
   id: number;
@@ -69,20 +80,26 @@ interface SuggestionCard {
   icon: React.ReactNode;
   prompt: string;
 }
+
 interface SuggestionDataItem {
   id: number;
   title: string;
   description: string;
-  icon: keyof typeof iconMap; // restrict icon keys to LucideIcons keys
+  icon: keyof typeof iconMap;
   prompt: string;
 }
 
-
-// User type for mentions
 interface User {
   id: number;
   name: string;
 }
+
+const iconMap = {
+  Settings,
+  Lightbulb,
+  MessageSquare,
+  HelpCircle,
+} as const;
 
 const ChatArea: React.FC = () => {
   const { theme } = useTheme();
@@ -99,23 +116,22 @@ const ChatArea: React.FC = () => {
   const [thinkingCounter, setThinkingCounter] = useState(0);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  
-  // Mention related states
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
   const [mentionIndex, setMentionIndex] = useState(-1);
+  const [isCanvasOpen, setIsCanvasOpen] = useState(false);
+  const [canvasData, setCanvasData] = useState<CanvasData | null>(null);
 
-  // User data for mentions
   const users: User[] = [
     { id: 1, name: 'Parth Patel' },
     { id: 2, name: 'Parth Sharma' },
-    { id: 3, name: 'Parth maniya' },
+    { id: 3, name: 'Parth Maniya' },
     { id: 4, name: 'Dhruvi Ramani' },
     { id: 5, name: 'Gopi Patel' },
-    { id: 6, name: 'dev narayan' },
-    { id: 7, name: 'saneha kukreja' },
-    { id: 8, name: 'saneha patel' },
-    { id: 9, name: 'nayan shah' },
+    { id: 6, name: 'Dev Narayan' },
+    { id: 7, name: 'Saneha Kukreja' },
+    { id: 8, name: 'Saneha Patel' },
+    { id: 9, name: 'Nayan Shah' },
   ];
 
   useEffect(() => {
@@ -125,10 +141,10 @@ const ChatArea: React.FC = () => {
     }
 
     const staticSuggestions = [
-      "How can I help you today?",
-      "What are you looking for?",
-      "Do you need assistance with anything?",
-      "Let me know if you have a question.",
+      'How can I help you today?',
+      'What are you looking for?',
+      'Do you need assistance with anything?',
+      'Let me know if you have a question.',
     ];
 
     const filtered = staticSuggestions.filter(s =>
@@ -137,9 +153,9 @@ const ChatArea: React.FC = () => {
 
     setSuggestions(filtered);
   }, [message]);
+
   const [suggestionCards, setSuggestionCards] = useState<SuggestionCard[]>([]);
   const suggestionsData: SuggestionDataItem[] = rawSuggestionsData;
-
 
   useEffect(() => {
     const mapped = suggestionsData.map((item) => {
@@ -152,8 +168,6 @@ const ChatArea: React.FC = () => {
     setSuggestionCards(mapped);
   }, []);
 
-
-
   const chatBg = theme === 'dark' ? 'bg-black' : 'bg-beige';
   const cardBg = theme === 'dark' ? 'bg-gray-900' : 'bg-white';
   const userCardBg = theme === 'dark' ? 'bg-teal-900' : 'bg-teal-50';
@@ -162,31 +176,66 @@ const ChatArea: React.FC = () => {
   const textColor = theme === 'dark' ? 'text-gray-300' : 'text-gray-700';
   const placeholderColor = theme === 'dark' ? 'placeholder-gray-500' : 'placeholder-gray-400';
 
-  // WebSocket connection setup
   useEffect(() => {
     const connectWebSocket = () => {
+      console.log('Attempting WebSocket connection...');
       wsRef.current = new WebSocket('ws://localhost:8080');
 
       wsRef.current.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocket connected successfully');
         reconnectAttempts.current = 0;
       };
 
       wsRef.current.onmessage = (event) => {
-        console.log('Received WebSocket message:', event.data);
+        console.log('Raw WebSocket message received:', event.data);
         try {
           const data = JSON.parse(event.data);
-          if (data.text) {
-            const aiResponse: Message = {
+          console.log('Parsed WebSocket data:', data);
+
+          // Only add a text message if data.text exists and is non-empty
+          if (data.text && data.text.trim() !== '') {
+            const textMessage: Message = {
               id: messages.length + 1,
               text: data.text,
               sender: 'ai',
-              timestamp: new Date()
+              timestamp: new Date(),
+              isToolResponse: false
             };
-            setMessages(prev => [...prev, aiResponse]);
+            setMessages(prev => [...prev, textMessage]);
+          }
+
+          // Handle table data for side canvas
+          if (data.show_table && data.headers && data.data) {
+            const visibleHeaders = data.headers.filter(header => header !== 'Employee ID');
+            const tableData: CanvasData = {
+              type: 'table',
+              title: 'Attendance List',
+              content: data.data.map(row => {
+                const obj = {};
+                data.headers.forEach((header, index) => {
+                  if (header !== 'Employee ID') {
+                    obj[header] = row[index];
+                  }
+                });
+                return obj;
+              }),
+              metadata: {
+                rows: data.data.length,
+                columns: visibleHeaders.length
+              }
+            };
+            console.log('Opening SideCanvas with table data:', tableData);
+            setCanvasData(tableData);
+            setIsCanvasOpen(true);
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
+          setMessages(prev => [...prev, {
+            id: messages.length + 1,
+            text: 'Error processing response from server.',
+            sender: 'ai',
+            timestamp: new Date()
+          }]);
         }
       };
 
@@ -198,6 +247,7 @@ const ChatArea: React.FC = () => {
         console.log('WebSocket disconnected');
         if (reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current += 1;
+          console.log(`Reconnecting attempt ${reconnectAttempts.current}/${maxReconnectAttempts}...`);
           setTimeout(connectWebSocket, 3000 * reconnectAttempts.current);
         } else {
           console.error('Max WebSocket reconnect attempts reached');
@@ -214,11 +264,11 @@ const ChatArea: React.FC = () => {
     connectWebSocket();
 
     return () => {
+      console.log('Cleaning up WebSocket connection');
       wsRef.current?.close();
     };
   }, []);
 
-  // Speech recognition setup
   useEffect(() => {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -263,7 +313,6 @@ const ChatArea: React.FC = () => {
     };
   }, [isListening]);
 
-  // Thinking timer effect
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isThinking) {
@@ -273,13 +322,6 @@ const ChatArea: React.FC = () => {
           if (prev <= 1) {
             clearInterval(timer);
             setIsThinking(false);
-            const aiResponse: Message = {
-              id: messages.length + 1,
-              text: "After careful consideration, here's my response: I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
-              sender: 'ai',
-              timestamp: new Date()
-            };
-            setMessages((prev) => [...prev, aiResponse]);
             return 0;
           }
           return prev - 1;
@@ -287,7 +329,7 @@ const ChatArea: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isThinking, thinkingTime, messages]);
+  }, [isThinking, thinkingTime]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
@@ -324,16 +366,22 @@ const ChatArea: React.FC = () => {
         timestamp: new Date()
       };
       
-      setMessages(prev => [...prev, newMessage]);
+      console.log('Sending user message:', newMessage);
+      setMessages(prev => {
+        const updatedMessages = [...prev, newMessage];
+        console.log('Updated messages state:', updatedMessages);
+        return updatedMessages;
+      });
       setMessage('');
       setTranscription('');
       setSuggestions([]);
       setMentionSuggestions([]);
 
-      // Send message to WebSocket server
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('Sending to WebSocket:', textToSend);
         wsRef.current.send(JSON.stringify({ text: textToSend }));
       } else {
+        console.error('WebSocket not connected');
         setMessages(prev => [...prev, {
           id: messages.length + 1,
           text: 'Failed to send message. Server is disconnected.',
@@ -344,16 +392,6 @@ const ChatArea: React.FC = () => {
       
       if (useThinkMode) {
         setIsThinking(true);
-      } else {
-        setTimeout(() => {
-          const aiResponse: Message = {
-            id: messages.length + 1,
-            text: "Thank you for your message! I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
-            sender: 'ai',
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, aiResponse]);
-        }, 1000);
       }
     }
   };
@@ -373,11 +411,86 @@ const ChatArea: React.FC = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const renderMarkdown = (text: string) => {
+    try {
+      const lines = text.split('\n').map(line => line.trim());
+      const elements: JSX.Element[] = [];
+      let currentList: string[] = [];
+
+      lines.forEach((line, index) => {
+        if (!line) {
+          if (currentList.length) {
+            elements.push(
+              <ul key={`ul-${index}`} className="list-disc pl-6">
+                {currentList.map((item, i) => (
+                  <li key={`li-${i}`}>{item}</li>
+                ))}
+              </ul>
+            );
+            currentList = [];
+          }
+          return;
+        }
+
+        if (line.match(/^\d+\.\s/)) {
+          if (currentList.length) {
+            elements.push(
+              <ul key={`ul-${index}`} className="list-disc pl-6">
+                {currentList.map((item, i) => (
+                  <li key={`li-${i}`}>{item}</li>
+                ))}
+              </ul>
+            );
+            currentList = [];
+          }
+          elements.push(
+            <p key={`p-${index}`} className="font-semibold mt-2">{line}</p>
+          );
+        } else if (line.startsWith('•')) {
+          currentList.push(line.replace(/^\s*•\s*/, ''));
+        } else {
+          if (currentList.length) {
+            elements.push(
+              <ul key={`ul-${index}`} className="list-disc pl-6">
+                {currentList.map((item, i) => (
+                  <li key={`li-${i}`}>{item}</li>
+                ))}
+              </ul>
+            );
+            currentList = [];
+          }
+          elements.push(<p key={`p-${index}`}>{line}</p>);
+        }
+      });
+
+      if (currentList.length) {
+        elements.push(
+          <ul key={`ul-final`} className="list-disc pl-6">
+            {currentList.map((item, i) => (
+              <li key={`li-${i}`}>{item}</li>
+            ))}
+          </ul>
+        );
+      }
+
+      return elements.length ? elements : <p>{text}</p>;
+    } catch (error) {
+      console.error('Error rendering markdown:', error);
+      return <p>{text}</p>;
+    }
+  };
+
   return (
     <div className={`flex-1 ${chatBg} transition-theme flex flex-col relative overflow-hidden`}>
       <div className="absolute inset-0 opacity-5 pointer-events-none">
         <div className="whatsapp-pattern"></div>
       </div>
+
+      <SideCanvas
+        isOpen={isCanvasOpen}
+        onClose={() => setIsCanvasOpen(false)}
+        data={canvasData}
+      />
 
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
@@ -442,47 +555,55 @@ const ChatArea: React.FC = () => {
             <div className="flex justify-center mb-8">
               <AnimatedAvatar toggleListening={toggleListening} isListening={isListening} />
             </div>
-
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div className={`
-                  max-w-3xl flex items-start space-x-3
-                  ${msg.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}
-                `}>
+            {console.log('Rendering messages:', messages)}
+            {messages
+              .filter(msg => !msg.isToolResponse)
+              .map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
                   <div className={`
-                    w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                    ${msg.sender === 'user'
-                      ? theme === 'dark' ? 'bg-teal-600' : 'bg-teal-500'
-                      : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
-                    }
+                    max-w-3xl flex items-start space-x-3
+                    ${msg.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}
                   `}>
-                    {msg.sender === 'user' ? (
-                      <User size={20} className="text-white" />
-                    ) : (
-                      <Bot size={20} className={theme === 'dark' ? 'text-teal-400' : 'text-teal-600'} />
-                    )}
-                  </div>
-
-                  <div className={`
-                    message-card ${theme}
-                    ${msg.sender === 'user' ? userCardBg : aiCardBg}
-                    ${textColor}
-                    p-4 rounded-2xl shadow-md
-                  `}>
-                    <p className="text-sm leading-relaxed">{msg.text}</p>
                     <div className={`
-                      text-xs mt-2 opacity-60
-                      ${msg.sender === 'user' ? 'text-right' : 'text-left'}
+                      w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                      ${msg.sender === 'user'
+                        ? theme === 'dark' ? 'bg-teal-600' : 'bg-teal-500'
+                        : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
+                      }
                     `}>
-                      {formatTime(msg.timestamp)}
+                      {msg.sender === 'user' ? (
+                        <User size={20} className="text-white" />
+                      ) : (
+                        <Bot size={20} className={theme === 'dark' ? 'text-teal-400' : 'text-teal-600'} />
+                      )}
+                    </div>
+
+                    <div className={`
+                      message-card ${theme}
+                      ${msg.sender === 'user' ? userCardBg : aiCardBg}
+                      ${textColor}
+                      p-4 rounded-2xl shadow-md
+                    `}>
+                      {msg.sender === 'ai' ? (
+                        <div className="text-sm leading-relaxed">
+                          {renderMarkdown(msg.text)}
+                        </div>
+                      ) : (
+                        <p className="text-sm leading-relaxed">{msg.text}</p>
+                      )}
+                      <div className={`
+                        text-xs mt-2 opacity-60
+                        ${msg.sender === 'user' ? 'text-right' : 'text-left'}
+                      `}>
+                        {formatTime(msg.timestamp)}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
             
             {isThinking && (
               <div className="flex justify-start">
@@ -610,7 +731,6 @@ const ChatArea: React.FC = () => {
                   }
                 }}
                 onKeyDown={(e) => {
-                  // Handle mention suggestions
                   if (mentionSuggestions.length > 0) {
                     if (e.key === 'ArrowDown') {
                       e.preventDefault();
@@ -629,7 +749,6 @@ const ChatArea: React.FC = () => {
                     return;
                   }
 
-                  // Handle static suggestions
                   if (suggestions.length > 0) {
                     if (e.key === 'ArrowDown') {
                       e.preventDefault();
