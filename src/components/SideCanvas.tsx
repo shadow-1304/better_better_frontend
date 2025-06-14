@@ -122,7 +122,7 @@ const SideCanvas: React.FC<SideCanvasProps> = ({ isOpen, onClose, data }) => {
       case 'reminders':
         return <RemindersCanvas data={data.content} theme={theme} showAll={showAllReminders} currentPage={currentPage} itemsPerPage={itemsPerPage} />;
       case 'table':
-        return <TableCanvas data={data.content} theme={theme} />;
+        return <TableCanvas data={data.content} theme={theme} title={data.title} />;
       case 'chart':
         return <ChartCanvas data={data.content} theme={theme} chartType={data.metadata?.chartType} />;
       case 'code':
@@ -366,12 +366,24 @@ const RemindersCanvas: React.FC<{ data: string[]; theme: string; showAll: boolea
 };
 
 // Table Canvas Component
-const TableCanvas: React.FC<{ data: any[]; theme: string }> = ({ data, theme }) => {
+const TableCanvas: React.FC<{ data: any[]; theme: string; title?: string }> = ({ data, theme, title }) => {
   if (!Array.isArray(data) || data.length === 0) {
     return <div className="text-center py-8 opacity-60">No data available</div>;
   }
 
-  const headers = Object.keys(data[0]);
+  let headers: string[];
+  if (title === 'Payroll Data') {
+    headers = [
+      'salary_month',
+      'salary_year',
+      'head_code',
+      'head_name',
+      'type_of_salary',
+      'calc_salary_amount'
+    ];
+  } else {
+    headers = Object.keys(data[0]);
+  }
   
   return (
     <div className="overflow-x-auto">
@@ -383,7 +395,7 @@ const TableCanvas: React.FC<{ data: any[]; theme: string }> = ({ data, theme }) 
           `}>
             {headers.map((header, index) => (
               <th key={index} className="px-4 py-3 text-left font-semibold">
-                {header}
+                {header.replace(/_/g, ' ').toUpperCase()}
               </th>
             ))}
           </tr>
@@ -403,7 +415,7 @@ const TableCanvas: React.FC<{ data: any[]; theme: string }> = ({ data, theme }) 
             >
               {headers.map((header, cellIndex) => (
                 <td key={cellIndex} className="px-4 py-3">
-                  {row[header]}
+                  {row[header] ?? 'N/A'}
                 </td>
               ))}
             </tr>

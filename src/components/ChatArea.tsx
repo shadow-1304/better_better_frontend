@@ -205,6 +205,33 @@ const ChatArea: React.FC = () => {
             return;
           }
 
+          // Handle show_payroll data response
+          if (data.show_payroll && Array.isArray(data.data)) {
+            newCanvasData = {
+              type: 'table',
+              title: 'Payroll Data',
+              content: data.data,
+              metadata: {
+                rows: data.data.length,
+                columns: 6,
+              },
+            };
+            newMessage = {
+              id: messages.length + 1,
+              text: 'Payroll data retrieved successfully.',
+              sender: 'ai',
+              timestamp: new Date(),
+              isToolResponse: true,
+              toolData: newCanvasData,
+            };
+            setMessages(prev => [...prev, newMessage]);
+            setCanvasData(newCanvasData);
+            setIsCanvasOpen(true);
+            lastToolResponseRef.current = newMessage;
+            setIsThinking(false);
+            return;
+          }
+
           // Handle get_hr_reminder data response
           if (data.get_hr_reminder && Array.isArray(data.data)) {
             reminderDataRef.current = data.data; // Store data for SideCanvas
@@ -501,8 +528,8 @@ const ChatArea: React.FC = () => {
           elements.push(
             <p key={`p-${index}`} className="font-semibold mt-2">{line}</p>
           );
-        } else if (line.startsWith('â€¢') || line.startsWith('-')) {
-          currentList.push(line.replace(/^\s*[\â€¢\-]\s*/, ''));
+        } else if (line.startsWith('Ã¢â‚¬Â¢') || line.startsWith('-')) {
+          currentList.push(line.replace(/^\s*[\Ã¢â‚¬Â¢\-]\s*/, ''));
         } else {
           if (currentList.length) {
             elements.push(
