@@ -207,12 +207,26 @@ const ChatArea: React.FC = () => {
 
           // Handle show_payroll data response
           if (data.show_payroll && Array.isArray(data.data)) {
+            // Extract entries from all_data[i].payroll[j].entries
+            const payrollEntries = data.data.flatMap((employee: any) =>
+              employee.payroll.flatMap((payroll: any) =>
+                payroll.entries.map((entry: any) => ({
+                  salary_month: entry.salary_month,
+                  salary_year: entry.salary_year,
+                  head_code: entry.head_code || 'N/A',
+                  head_name: entry.head_name,
+                  type_of_salary: entry.type_of_salary,
+                  calc_salary_amount: entry.calc_salary_amount,
+                }))
+              )
+            );
+
             newCanvasData = {
               type: 'table',
               title: 'Payroll Data',
-              content: data.data,
+              content: payrollEntries,
               metadata: {
-                rows: data.data.length,
+                rows: payrollEntries.length,
                 columns: 6,
               },
             };
