@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Lightbulb, MessageSquare, Settings, HelpCircle, Mic } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import AnimatedAvatar from './AnimatedAvatar';
+import * as LucideIcons from 'lucide-react';
+import rawSuggestionsData from '../data/suggestion.json';
 
 // Type definitions for Web Speech API
 interface SpeechRecognition extends EventTarget {
@@ -53,6 +55,12 @@ interface Message {
   sender: 'user' | 'ai';
   timestamp: Date;
 }
+const iconMap = {
+  Settings,
+  Lightbulb,
+  MessageSquare,
+  HelpCircle,
+} as const;
 
 interface SuggestionCard {
   id: number;
@@ -61,6 +69,14 @@ interface SuggestionCard {
   icon: React.ReactNode;
   prompt: string;
 }
+interface SuggestionDataItem {
+  id: number;
+  title: string;
+  description: string;
+  icon: keyof typeof iconMap; // restrict icon keys to LucideIcons keys
+  prompt: string;
+}
+
 
 // User type for mentions
 interface User {
@@ -121,37 +137,22 @@ const ChatArea: React.FC = () => {
 
     setSuggestions(filtered);
   }, [message]);
+  const [suggestionCards, setSuggestionCards] = useState<SuggestionCard[]>([]);
+  const suggestionsData: SuggestionDataItem[] = rawSuggestionsData;
 
-  const suggestionCards: SuggestionCard[] = [
-    {
-      id: 1,
-      title: "Paper Manufacturing",
-      description: "Learn about modern papermaking processes",
-      icon: <Settings size={20} />,
-      prompt: "Tell me about modern paper manufacturing processes and technologies"
-    },
-    {
-      id: 2,
-      title: "Production Optimization",
-      description: "Optimize your production line efficiency",
-      icon: <Lightbulb size={20} />,
-      prompt: "How can I optimize my paper production line for better efficiency?"
-    },
-    {
-      id: 3,
-      title: "Quality Control",
-      description: "Improve paper quality standards",
-      icon: <MessageSquare size={20} />,
-      prompt: "What are the best practices for paper quality control and testing?"
-    },
-    {
-      id: 4,
-      title: "Troubleshooting",
-      description: "Get help with common issues",
-      icon: <HelpCircle size={20} />,
-      prompt: "Help me troubleshoot common papermaking machine problems"
-    }
-  ];
+
+  useEffect(() => {
+    const mapped = suggestionsData.map((item) => {
+      const IconComponent = iconMap[item.icon];
+      return {
+        ...item,
+        icon: IconComponent ? <IconComponent size={20} /> : null,
+      };
+    });
+    setSuggestionCards(mapped);
+  }, []);
+
+
 
   const chatBg = theme === 'dark' ? 'bg-black' : 'bg-beige';
   const cardBg = theme === 'dark' ? 'bg-gray-900' : 'bg-white';
