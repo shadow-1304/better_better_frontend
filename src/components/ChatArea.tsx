@@ -62,6 +62,12 @@ interface SuggestionCard {
   prompt: string;
 }
 
+// User type for mentions
+interface User {
+  id: number;
+  name: string;
+}
+
 const ChatArea: React.FC = () => {
   const { theme } = useTheme();
   const [message, setMessage] = useState('');
@@ -75,6 +81,46 @@ const ChatArea: React.FC = () => {
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingTime, setThinkingTime] = useState(6);
   const [thinkingCounter, setThinkingCounter] = useState(0);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  
+  // Mention related states
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
+  const [mentionIndex, setMentionIndex] = useState(-1);
+
+  // User data for mentions
+  const users: User[] = [
+    { id: 1, name: 'Parth Patel' },
+    { id: 2, name: 'Parth Sharma' },
+    { id: 3, name: 'Parth maniya' },
+    { id: 4, name: 'Dhruvi Ramani' },
+    { id: 5, name: 'Gopi Patel' },
+    { id: 6, name: 'dev narayan' },
+    { id: 7, name: 'saneha kukreja' },
+    { id: 8, name: 'saneha patel' },
+    { id: 9, name: 'nayan shah' },
+  ];
+
+  useEffect(() => {
+    if (message.trim() === '') {
+      setSuggestions([]);
+      return;
+    }
+
+    const staticSuggestions = [
+      "How can I help you today?",
+      "What are you looking for?",
+      "Do you need assistance with anything?",
+      "Let me know if you have a question.",
+    ];
+
+    const filtered = staticSuggestions.filter(s =>
+      s.toLowerCase().startsWith(message.toLowerCase())
+    );
+
+    setSuggestions(filtered);
+  }, [message]);
 
   const suggestionCards: SuggestionCard[] = [
     {
@@ -259,6 +305,14 @@ const ChatArea: React.FC = () => {
     }
   };
 
+  const insertMention = (name: string) => {
+    const atIndex = message.lastIndexOf('@');
+    const newMessage = message.slice(0, atIndex) + '@' + name + ' ';
+    setMessage(newMessage);
+    setMentionSuggestions([]);
+    setMentionIndex(-1);
+  };
+
   const handleSendMessage = (messageText?: string, useThinkMode: boolean = false) => {
     const textToSend = messageText || message;
     if (textToSend.trim()) {
@@ -272,6 +326,8 @@ const ChatArea: React.FC = () => {
       setMessages(prev => [...prev, newMessage]);
       setMessage('');
       setTranscription('');
+      setSuggestions([]);
+      setMentionSuggestions([]);
 
       // Send message to WebSocket server
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -331,7 +387,7 @@ const ChatArea: React.FC = () => {
               Hello, I'm LineoMatic AI!
             </h2>
             <p className="text-base opacity-80">
-              Your intelligent assistant for paper manufacturing and production optimization. 
+              Your intelligent assistant for paper manufacturing and production optimization.
               How can I help you today?
             </p>
           </div>
@@ -353,8 +409,8 @@ const ChatArea: React.FC = () => {
                 <div className="flex items-start space-x-4">
                   <div className={`
                     p-3 rounded-full transition-all duration-300
-                    ${theme === 'dark' 
-                      ? 'bg-teal-400 bg-opacity-20 text-teal-400 group-hover:bg-opacity-30' 
+                    ${theme === 'dark'
+                      ? 'bg-teal-400 bg-opacity-20 text-teal-400 group-hover:bg-opacity-30'
                       : 'bg-teal-600 bg-opacity-20 text-teal-600 group-hover:bg-opacity-30'
                     }
                   `}>
@@ -363,8 +419,8 @@ const ChatArea: React.FC = () => {
                   <div className="flex-1">
                     <h3 className={`
                       font-semibold text-lg mb-2 transition-colors duration-300
-                      ${theme === 'dark' 
-                        ? 'text-teal-400 group-hover:text-teal-300' 
+                      ${theme === 'dark'
+                        ? 'text-teal-400 group-hover:text-teal-300'
                         : 'text-teal-600 group-hover:text-teal-700'
                       }
                     `}>
@@ -385,7 +441,7 @@ const ChatArea: React.FC = () => {
             <div className="flex justify-center mb-8">
               <AnimatedAvatar toggleListening={toggleListening} isListening={isListening} />
             </div>
-            
+
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -397,7 +453,7 @@ const ChatArea: React.FC = () => {
                 `}>
                   <div className={`
                     w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                    ${msg.sender === 'user' 
+                    ${msg.sender === 'user'
                       ? theme === 'dark' ? 'bg-teal-600' : 'bg-teal-500'
                       : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
                     }
@@ -408,7 +464,7 @@ const ChatArea: React.FC = () => {
                       <Bot size={20} className={theme === 'dark' ? 'text-teal-400' : 'text-teal-600'} />
                     )}
                   </div>
-                  
+
                   <div className={`
                     message-card ${theme}
                     ${msg.sender === 'user' ? userCardBg : aiCardBg}
@@ -477,7 +533,7 @@ const ChatArea: React.FC = () => {
                       </div>
                       
                       <p className="text-sm leading-relaxed mt-3 italic">
-                        Analyzing: "{messages[messages.length - 1].text}"
+                        Analyzing: "{messages[messages.length - 1]?.text || ''}"
                       </p>
                     </div>
                   </div>
@@ -510,7 +566,7 @@ const ChatArea: React.FC = () => {
                 ? 'bg-gradient-to-r from-teal-400 to-cyan-400 text-black' 
                 : 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white'
               }
-              hover:scale-115
+              hover:scale-110
               hover:shadow-[0_0_30px_rgba(0,229,255,0.6)]
               ${isListening ? 'animate-pulse' : ''}
             `}
@@ -519,21 +575,120 @@ const ChatArea: React.FC = () => {
           </button>
           
           <div className="flex-1 relative">
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message here..."
-              className={`
-                w-full px-4 py-3 rounded-full shadow-inner
-                ${inputBg} ${textColor} ${placeholderColor}
-                focus:outline-none focus:ring-2 focus:ring-teal-500
-                transition-all duration-300
-              `}
-            />
+            <div className="relative">
+              <div className="absolute inset-0 pointer-events-none flex items-center pl-3 pr-12 whitespace-pre">
+                <span className="invisible">{message}</span>
+                {suggestions.length > 0 && (
+                  <span className={`opacity-50 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {suggestions[0]?.slice(message.length) || ''}
+                  </span>
+                )}
+              </div>
+              <input
+                type="text"
+                value={message}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setMessage(val);
+                  setSelectedIndex(-1);
+
+                  const atIndex = val.lastIndexOf('@');
+                  if (atIndex >= 0) {
+                    const query = val.slice(atIndex + 1);
+                    if (query.length > 0) {
+                      const matches = users.filter(u =>
+                        u.name.toLowerCase().startsWith(query.toLowerCase())
+                      );
+                      setMentionQuery(query);
+                      setMentionSuggestions(matches);
+                    } else {
+                      setMentionSuggestions([]);
+                    }
+                  } else {
+                    setMentionSuggestions([]);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Handle mention suggestions
+                  if (mentionSuggestions.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setMentionIndex((prev) => (prev + 1) % mentionSuggestions.length);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setMentionIndex((prev) => (prev - 1 + mentionSuggestions.length) % mentionSuggestions.length);
+                    } else if ((e.key === 'Enter' || e.key === 'Tab') && mentionSuggestions.length > 0) {
+                      e.preventDefault();
+                      if (mentionIndex >= 0) {
+                        insertMention(mentionSuggestions[mentionIndex].name);
+                      } else {
+                        insertMention(mentionSuggestions[0].name);
+                      }
+                    }
+                    return;
+                  }
+
+                  // Handle static suggestions
+                  if (suggestions.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setSelectedIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+                    } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                      e.preventDefault();
+                      setMessage(suggestions[selectedIndex]);
+                      setSuggestions([]);
+                      setSelectedIndex(-1);
+                    } else if (e.key === 'Tab') {
+                      e.preventDefault();
+                      setMessage(suggestions[0]);
+                      setSuggestions([]);
+                      setSelectedIndex(-1);
+                    }
+                  }
+                }}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message here..."
+                className={`
+                  w-full px-4 py-3 rounded-full shadow-inner
+                  ${inputBg} ${textColor} ${placeholderColor}
+                  focus:outline-none focus:ring-2 focus:ring-teal-500
+                  transition-all duration-300 relative bg-transparent z-10
+                `}
+              />
+              
+              {mentionSuggestions.length > 0 && (
+                <div className={`
+                  absolute left-0 bottom-full mb-2 w-full z-50 max-h-48 overflow-y-auto rounded-xl shadow-xl
+                  border ${theme === 'dark' ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}
+                `}>
+                  {mentionSuggestions.map((user, idx) => (
+                    <div
+                      key={user.id}
+                      onClick={() => insertMention(user.name)}
+                      className={`
+                        px-4 py-2 text-sm cursor-pointer flex items-center transition-colors
+                        ${idx === mentionIndex
+                          ? theme === 'dark'
+                            ? 'bg-teal-700 text-white'
+                            : 'bg-teal-100 text-gray-900'
+                          : theme === 'dark'
+                            ? 'hover:bg-gray-800 text-gray-300'
+                            : 'hover:bg-gray-100 text-gray-700'
+                        }
+                      `}
+                    >
+                      <User size={16} className="mr-2" />
+                      {user.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          
+
           <button
             onClick={() => handleSendMessage(undefined, true)}
             disabled={!message.trim()}
