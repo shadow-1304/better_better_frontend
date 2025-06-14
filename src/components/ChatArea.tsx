@@ -72,6 +72,9 @@ const ChatArea: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingTime, setThinkingTime] = useState(6);
+  const [thinkingCounter, setThinkingCounter] = useState(0);
 
   const suggestionCards: SuggestionCard[] = [
     {
@@ -119,7 +122,7 @@ const ChatArea: React.FC = () => {
 
       wsRef.current.onopen = () => {
         console.log('WebSocket connected');
-        reconnectAttempts.current = 0; // Reset reconnect attempts on successful connection
+        reconnectAttempts.current = 0;
       };
 
       wsRef.current.onmessage = (event) => {
@@ -148,7 +151,7 @@ const ChatArea: React.FC = () => {
         console.log('WebSocket disconnected');
         if (reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current += 1;
-          setTimeout(connectWebSocket, 3000 * reconnectAttempts.current); // Exponential backoff
+          setTimeout(connectWebSocket, 3000 * reconnectAttempts.current);
         } else {
           console.error('Max WebSocket reconnect attempts reached');
           setMessages(prev => [...prev, {
@@ -166,7 +169,7 @@ const ChatArea: React.FC = () => {
     return () => {
       wsRef.current?.close();
     };
-  }, []); // Removed messages.length dependency
+  }, []);
 
   // Speech recognition setup
   useEffect(() => {
@@ -188,7 +191,6 @@ const ChatArea: React.FC = () => {
             interimTranscript += transcript;
           }
         }
-        console.log('Transcription:', { finalTranscript, interimTranscript });
         setTranscription(finalTranscript + interimTranscript);
         setMessage(finalTranscript + interimTranscript);
       };
@@ -214,6 +216,32 @@ const ChatArea: React.FC = () => {
     };
   }, [isListening]);
 
+  // Thinking timer effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isThinking) {
+      setThinkingCounter(thinkingTime);
+      timer = setInterval(() => {
+        setThinkingCounter((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setIsThinking(false);
+            const aiResponse: Message = {
+              id: messages.length + 1,
+              text: "After careful consideration, here's my response: I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
+              sender: 'ai',
+              timestamp: new Date()
+            };
+            setMessages((prev) => [...prev, aiResponse]);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isThinking, thinkingTime, messages]);
+
   const toggleListening = () => {
     if (!recognitionRef.current) {
       setTranscription('Speech recognition is not supported in this browser.');
@@ -231,7 +259,7 @@ const ChatArea: React.FC = () => {
     }
   };
 
-  const handleSendMessage = (messageText?: string) => {
+  const handleSendMessage = (messageText?: string, useThinkMode: boolean = false) => {
     const textToSend = messageText || message;
     if (textToSend.trim()) {
       const newMessage: Message = {
@@ -241,7 +269,7 @@ const ChatArea: React.FC = () => {
         timestamp: new Date()
       };
       
-      setMessages([...messages, newMessage]);
+      setMessages(prev => [...prev, newMessage]);
       setMessage('');
       setTranscription('');
 
@@ -250,11 +278,25 @@ const ChatArea: React.FC = () => {
         wsRef.current.send(JSON.stringify({ text: textToSend }));
       } else {
         setMessages(prev => [...prev, {
-          id: messages.length + 2,
+          id: messages.length + 1,
           text: 'Failed to send message. Server is disconnected.',
           sender: 'ai',
           timestamp: new Date()
         }]);
+      }
+      
+      if (useThinkMode) {
+        setIsThinking(true);
+      } else {
+        setTimeout(() => {
+          const aiResponse: Message = {
+            id: messages.length + 1,
+            text: "Thank you for your message! I'm LineoMatic AI, specialized in paper manufacturing and production optimization. I'm here to help you with any questions about papermaking processes, quality control, troubleshooting, and efficiency improvements.",
+            sender: 'ai',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, aiResponse]);
+        }, 1000);
       }
     }
   };
@@ -276,7 +318,6 @@ const ChatArea: React.FC = () => {
 
   return (
     <div className={`flex-1 ${chatBg} transition-theme flex flex-col relative overflow-hidden`}>
-      {/* WhatsApp-style background pattern */}
       <div className="absolute inset-0 opacity-5 pointer-events-none">
         <div className="whatsapp-pattern"></div>
       </div>
@@ -295,7 +336,6 @@ const ChatArea: React.FC = () => {
             </p>
           </div>
 
-          {/* Suggestion Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl w-full">
             {suggestionCards.map((suggestion) => (
               <div
@@ -373,6 +413,7 @@ const ChatArea: React.FC = () => {
                     message-card ${theme}
                     ${msg.sender === 'user' ? userCardBg : aiCardBg}
                     ${textColor}
+                    p-4 rounded-2xl shadow-md
                   `}>
                     <p className="text-sm leading-relaxed">{msg.text}</p>
                     <div className={`
@@ -385,6 +426,64 @@ const ChatArea: React.FC = () => {
                 </div>
               </div>
             ))}
+            
+            {isThinking && (
+              <div className="flex justify-start">
+                <div className="max-w-3xl flex items-start space-x-3">
+                  <div className={`
+                    w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                    ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}
+                  `}>
+                    <Bot size={20} className={theme === 'dark' ? 'text-teal-400' : 'text-teal-600'} />
+                  </div>
+                  
+                  <div className={`
+                    message-card ${theme}
+                    ${aiCardBg}
+                    ${textColor}
+                    relative overflow-hidden p-4 rounded-2xl shadow-md
+                  `}>
+                    <div className="absolute top-0 left-0 w-full h-1.5">
+                      <div className={`
+                        absolute h-full w-[200%] animate-streamline
+                        ${theme === 'dark' ? 'bg-teal-400' : 'bg-teal-600'}
+                      `} style={{
+                        backgroundImage: theme === 'dark' 
+                          ? 'linear-gradient(90deg, transparent 0%, rgba(45,212,191,0.8) 50%, transparent 100%)'
+                          : 'linear-gradient(90deg, transparent 0%, rgba(13,148,136,0.8) 50%, transparent 100%)'
+                      }}></div>
+                    </div>
+                    
+                    <div className="pt-4 pb-2">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <p className="text-sm font-semibold">Processing your request...</p>
+                      </div>
+                      
+                      <div className="flex space-x-1 mt-3">
+                        {[...Array(12)].map((_, i) => (
+                          <div 
+                            key={i}
+                            className={`
+                              h-2 flex-1 rounded-full
+                              ${theme === 'dark' ? 'bg-gray-600' : 'bg-gray-300'}
+                              animate-pulse
+                            `}
+                            style={{
+                              animationDelay: `${i * 0.1}s`,
+                              opacity: 0.3 + (i % 3) * 0.2
+                            }}
+                          ></div>
+                        ))}
+                      </div>
+                      
+                      <p className="text-sm leading-relaxed mt-3 italic">
+                        Analyzing: "{messages[messages.length - 1].text}"
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -427,19 +526,41 @@ const ChatArea: React.FC = () => {
               onKeyPress={handleKeyPress}
               placeholder="Type your message here..."
               className={`
-                chat-input ${theme}
+                w-full px-4 py-3 rounded-full shadow-inner
                 ${inputBg} ${textColor} ${placeholderColor}
-                pr-12
+                focus:outline-none focus:ring-2 focus:ring-teal-500
+                transition-all duration-300
               `}
             />
           </div>
           
           <button
+            onClick={() => handleSendMessage(undefined, true)}
+            disabled={!message.trim()}
+            className={`
+              p-3 rounded-full transition-all duration-200
+              ${theme === 'dark' 
+                ? 'text-teal-400 hover:bg-teal-400 hover:bg-opacity-10' 
+                : 'text-teal-600 hover:bg-teal-600 hover:bg-opacity-10'
+              }
+              ${!message.trim() ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+            title="Think"
+          >
+            <Lightbulb size={20} />
+          </button>
+          
+          <button
             onClick={() => handleSendMessage()}
             disabled={!message.trim()}
             className={`
-              send-button ${theme}
+              p-3 rounded-full transition-all duration-200
+              ${theme === 'dark' 
+                ? 'bg-teal-500 text-gray-900 hover:bg-teal-400' 
+                : 'bg-teal-600 text-white hover:bg-teal-700'
+              }
               ${!message.trim() ? 'opacity-50 cursor-not-allowed' : ''}
+              shadow-md hover:shadow-lg
             `}
           >
             <Send size={20} />
