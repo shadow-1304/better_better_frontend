@@ -147,9 +147,9 @@ const AnimatedAvatar: React.FC<AnimatedAvatarProps> = ({ toggleListening, isList
       <div className="relative">
         <svg
           ref={avatarRef}
-          width="140"
-          height="140"
-          viewBox="0 0 140 140"
+          width="180"
+          height="180"
+          viewBox="-20 -20 180 180"
           className={`drop-shadow-2xl cursor-pointer ${isListening ? 'animate-pulse' : ''}`}
           onClick={toggleListening}
         >

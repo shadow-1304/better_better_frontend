@@ -1,8 +1,18 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid'; // For generating session_id
+import { v4 as uuidv4 } from 'uuid';
 
 // Create WebSocket server for frontend clients
 const wss = new WebSocketServer({ port: 8080 });
+
+// Function to check if a string is valid JSON
+const isValidJSON = (str) => {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 // Function to connect to Python backend WebSocket
 const connectToBackend = (frontendWs, sessionId) => {
@@ -13,16 +23,23 @@ const connectToBackend = (frontendWs, sessionId) => {
   });
 
   backendWs.on('message', (data) => {
+    const dataStr = data.toString();
+    console.log('Received from backend:', dataStr);
+    
     try {
-      const backendResponse = JSON.parse(data.toString());
-      console.log('Received from backend:', backendResponse);
-      // Forward backend response to frontend client
-      if (backendResponse.text) {
-        frontendWs.send(JSON.stringify({ text: backendResponse.text }));
+      // Check if the message is valid JSON
+      if (isValidJSON(dataStr)) {
+        const backendResponse = JSON.parse(dataStr);
+        // Forward parsed JSON response to frontend client
+        frontendWs.send(JSON.stringify(backendResponse));
+      } else {
+        // Treat non-JSON message as a text error
+        console.warn('Non-JSON message received from backend:', dataStr);
+        frontendWs.send(JSON.stringify({ text: dataStr }));
       }
     } catch (error) {
-      console.error('Error parsing backend message:', error);
-      frontendWs.send(JSON.stringify({ text: 'Error receiving response from backend.' }));
+      console.error('Error processing backend message:', error);
+      frontendWs.send(JSON.stringify({ text: `Error processing backend response: ${error.message}` }));
     }
   });
 
